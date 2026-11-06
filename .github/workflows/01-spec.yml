@@ -65,9 +65,6 @@ jobs:
             --head "$BRANCH" \
             --label "spec")
 
-          PR_NUMBER="${PR_URL##*/}"
-          gh pr merge "${PR_NUMBER}" --auto --merge
-
           {
             echo "## 🤖 Spec Agent Complete"
             echo ""
