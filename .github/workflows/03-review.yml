@@ -8,7 +8,7 @@ on:
 jobs:
   review:
     name: Automated Code Review
-    if: startsWith(github.head_ref, 'feature/')
+    if: false  # review runs inside 02-develop.yml to avoid bot-PR workflow approval prompts
     runs-on: ubuntu-latest
     permissions:
       contents: read

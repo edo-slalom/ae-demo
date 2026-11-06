@@ -1,4 +1,4 @@
-name: "🤖 Gate 2 — Dev Agent"
+name: "🤖 Gate 2 — Dev Agent + Review"
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   develop:
-    name: Generate Implementation
+    name: Generate Implementation & Review
     if: >
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'spec/')
@@ -18,10 +18,11 @@ jobs:
       issues: write
 
     steps:
-      - name: Checkout main (with merged SPEC.md)
+      - name: Checkout main (with merged spec)
         uses: actions/checkout@v4
         with:
           ref: main
+          fetch-depth: 0
 
       - name: Extract issue number from branch name
         id: issue
@@ -37,6 +38,7 @@ jobs:
         run: node scripts/dev-agent.mjs
 
       - name: Create feature branch and open PR
+        id: create-pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
@@ -64,16 +66,42 @@ jobs:
             echo ""
             echo "${SUMMARY}"
             echo ""
-            echo "The Review Agent will post its findings as a PR comment automatically."
+            echo "Review Agent findings will be posted as a comment below."
             echo ""
-            echo "**Review the code and the agent review findings before approving.**"
+            echo "**Review the code and the agent findings before approving.**"
             echo ""
             echo "Closes #${ISSUE_NUMBER}"
           } > /tmp/pr-body.md
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --title "Feature: ${FEATURE_TITLE}" \
             --body-file /tmp/pr-body.md \
             --base main \
             --head "$BRANCH" \
-            --label "feature"
+            --label "feature")
+
+          PR_NUMBER="${PR_URL##*/}"
+          echo "number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Review Agent
+        env:
+          PR_DIFF: placeholder
+          SPEC_PATH: specs/issue-${{ steps.issue.outputs.number }}.md
+        run: |
+          git fetch origin main
+          export PR_DIFF="$(git diff origin/main...HEAD -- app/ | head -c 30000)"
+          node scripts/review-agent.mjs > /tmp/review.md
+
+      - name: Post review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.create-pr.outputs.number }}
+        run: |
+          {
+            cat /tmp/review.md
+            echo ""
+            echo "---"
+            echo "*Automated review by Review Agent — Gate 2 of 3*"
+          } > /tmp/review-comment.md
+          gh pr comment "${PR_NUMBER}" --body-file /tmp/review-comment.md
