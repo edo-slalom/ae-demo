@@ -28,7 +28,6 @@ jobs:
 
       - name: Run Spec Agent
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
           OUTPUT_PATH: SPEC.md
@@ -49,32 +48,37 @@ jobs:
           git commit -m "spec: auto-generate technical specification for #${ISSUE_NUMBER}"
           git push origin "$BRANCH"
 
+          {
+            echo "## 🤖 Spec Agent — Gate 1"
+            echo ""
+            echo "This specification was auto-generated from issue #${ISSUE_NUMBER} by the Spec Agent."
+            echo ""
+            echo "**Review the spec carefully before approving.** Once merged, the Dev Agent will automatically begin implementation."
+            echo ""
+            echo "### How to review"
+            echo "- [ ] Does the spec accurately capture the requirements from the issue?"
+            echo "- [ ] Are the API contracts sensible?"
+            echo "- [ ] Are the acceptance criteria testable?"
+            echo "- [ ] Is out-of-scope clearly defined?"
+            echo ""
+            echo "Closes #${ISSUE_NUMBER}"
+          } > /tmp/pr-body.md
+
           PR_URL=$(gh pr create \
             --title "Spec: ${ISSUE_TITLE}" \
-            --body "## 🤖 Spec Agent — Gate 1
-
-This specification was auto-generated from issue #${ISSUE_NUMBER} by the Spec Agent.
-
-**Review the spec carefully before approving.** Once merged, the Dev Agent will automatically begin implementation.
-
-### How to review
-- [ ] Does the spec accurately capture the requirements from the issue?
-- [ ] Are the API contracts sensible?
-- [ ] Are the acceptance criteria testable?
-- [ ] Is out-of-scope clearly defined?
-
-Closes #${ISSUE_NUMBER}" \
+            --body-file /tmp/pr-body.md \
             --base main \
             --head "$BRANCH" \
             --label "spec")
 
-          gh issue comment "${ISSUE_NUMBER}" --body "## 🤖 Spec Agent Complete
-
-I've analyzed your feature request and generated a technical specification.
-
-**[→ Review Spec PR](${PR_URL})**
-
-Once you approve and merge the spec, development begins automatically.
-
----
-*Gate 1 of 3 — Spec Approval*"
+          {
+            echo "## 🤖 Spec Agent Complete"
+            echo ""
+            echo "I've analyzed your feature request and generated a technical specification."
+            echo ""
+            echo "**[→ Review Spec PR](${PR_URL})**"
+            echo ""
+            echo "Once you approve and merge the spec, development begins automatically."
+            echo ""
+            echo "*Gate 1 of 3 — Spec Approval*"
+          } | gh issue comment "${ISSUE_NUMBER}" --body-file -

@@ -32,17 +32,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          EXISTING_BODY=$(gh release view "${{ github.event.release.tag_name }}" --json body -q .body)
-          gh release edit "${{ github.event.release.tag_name }}" \
-            --notes "${EXISTING_BODY}
-
----
-## 🎯 Deployment
-
-| Item | Detail |
-|------|--------|
-| Production URL | \`https://ae-demo.example.com\` |
-| Deployed at | $(date -u '+%Y-%m-%d %H:%M UTC') |
-| Status | ✅ Live |
-
-*Deployed by Release Agent*"
+          TAG="${{ github.event.release.tag_name }}"
+          EXISTING=$(gh release view "$TAG" --json body -q .body)
+          DEPLOY_TIME=$(date -u '+%Y-%m-%d %H:%M UTC')
+          {
+            echo "${EXISTING}"
+            echo ""
+            echo "---"
+            echo "## 🎯 Deployment"
+            echo ""
+            echo "| Item | Detail |"
+            echo "|------|--------|"
+            echo "| Production URL | \`https://ae-demo.example.com\` |"
+            echo "| Deployed at | ${DEPLOY_TIME} |"
+            echo "| Status | ✅ Live |"
+            echo ""
+            echo "*Deployed by Release Agent*"
+          } > /tmp/release-notes.md
+          gh release edit "$TAG" --notes "$(cat /tmp/release-notes.md)"
