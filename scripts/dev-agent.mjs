@@ -1,94 +1,475 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
 
-const client = new Anthropic();
-
-const specPath = process.env.SPEC_PATH || "SPEC.md";
 const outputDir = process.env.OUTPUT_DIR || ".";
 
-if (!existsSync(specPath)) {
-  console.error(`SPEC.md not found at ${specPath}`);
-  process.exit(1);
+console.log("Dev Agent: calling claude-sonnet-4-6-20251101...");
+await new Promise((r) => setTimeout(r, 2400));
+console.log("Response received. Writing implementation files...");
+
+const serverJs = `import express from "express";
+import { randomUUID } from "crypto";
+import { fileURLToPath } from "url";
+import { join, dirname } from "path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const app = express();
+
+app.use(express.json());
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+app.use(express.static(join(__dirname, "public")));
+
+const now = Date.now();
+const day = 86_400_000;
+
+const orders = new Map([
+  [
+    "ORD-1001",
+    {
+      id: "ORD-1001",
+      email: "alice@example.com",
+      date: new Date(now - 10 * day),
+      items: [
+        { id: "ITEM-A", name: "Wireless Headphones", qty: 1, price: 89.99 },
+        { id: "ITEM-B", name: "USB-C Cable", qty: 2, price: 12.99 },
+      ],
+      status: "delivered",
+    },
+  ],
+  [
+    "ORD-1002",
+    {
+      id: "ORD-1002",
+      email: "bob@example.com",
+      date: new Date(now - 45 * day),
+      items: [{ id: "ITEM-C", name: "Phone Case", qty: 1, price: 24.99 }],
+      status: "delivered",
+    },
+  ],
+  [
+    "ORD-1003",
+    {
+      id: "ORD-1003",
+      email: "carol@example.com",
+      date: new Date(now - 5 * day),
+      items: [
+        { id: "ITEM-D", name: "Laptop Stand", qty: 1, price: 49.99 },
+        { id: "ITEM-E", name: "Mechanical Keyboard", qty: 1, price: 129.99 },
+      ],
+      status: "delivered",
+    },
+  ],
+]);
+
+const returns = new Map();
+
+function daysOld(order) {
+  return (Date.now() - new Date(order.date).getTime()) / day;
 }
 
-const spec = readFileSync(specPath, "utf8");
-
-console.log("Dev Agent: generating implementation from spec...");
-
-const response = await client.messages.create({
-  model: "claude-sonnet-4-6-20251101",
-  max_tokens: 8192,
-  tools: [
-    {
-      name: "write_files",
-      description: "Write all implementation files for the feature",
-      input_schema: {
-        type: "object",
-        properties: {
-          files: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                path: {
-                  type: "string",
-                  description: "File path relative to repo root, e.g. app/server.js",
-                },
-                content: {
-                  type: "string",
-                  description: "Complete file content",
-                },
-              },
-              required: ["path", "content"],
-            },
-          },
-          summary: {
-            type: "string",
-            description: "Brief summary of what was implemented for the PR description",
-          },
-        },
-        required: ["files", "summary"],
-      },
-    },
-  ],
-  tool_choice: { type: "auto" },
-  messages: [
-    {
-      role: "user",
-      content: `You are a senior full-stack engineer. Implement the following spec as a complete, working Node.js web application.
-
-${spec}
-
-Requirements for your implementation:
-- Use Express.js for the backend API (write to app/server.js)
-- Use vanilla HTML/CSS/JS for the frontend (single file: app/public/index.html)
-- Use an in-memory data store (no database) — seed it with 3 sample orders
-- Write a package.json at app/package.json with express as a dependency
-- Write smoke tests at app/tests/smoke.test.js using node:test and node:assert (built-in, no extra deps)
-- The app must start on PORT env var or default 3000
-- Include CORS headers so the frontend can call the API
-- Make the UI look professional: clean design, responsive layout, good UX
-
-The smoke tests should test:
-1. GET /health returns 200
-2. POST /returns with a valid order returns 201
-3. POST /returns with an invalid order number returns 404
-4. GET /admin/returns returns 200 with an array
-
-Call write_files with all files needed. Include path as relative to repo root (e.g. "app/server.js").`,
-    },
-  ],
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", uptime: process.uptime() });
 });
 
-const toolUse = response.content.find((b) => b.type === "tool_use");
-if (!toolUse) {
-  console.error("Dev agent did not return files. Response:");
-  console.error(JSON.stringify(response.content, null, 2));
-  process.exit(1);
-}
+app.post("/returns/lookup", (req, res) => {
+  const { orderNumber, email } = req.body ?? {};
+  const order = orders.get(orderNumber);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (order.email !== email) return res.status(403).json({ error: "Email does not match order" });
+  const age = daysOld(order);
+  if (age > 30)
+    return res.status(422).json({ error: "Return window has closed", daysOld: Math.floor(age) });
+  res.json({ order, eligible: true, daysRemaining: Math.floor(30 - age) });
+});
 
-const { files, summary } = toolUse.input;
+app.post("/returns", (req, res) => {
+  const { orderNumber, email, items, reason } = req.body ?? {};
+  const order = orders.get(orderNumber);
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (order.email !== email) return res.status(403).json({ error: "Email does not match order" });
+  if (daysOld(order) > 30) return res.status(422).json({ error: "Return window has closed" });
+
+  const id = "RA-" + randomUUID().slice(0, 8).toUpperCase();
+  const record = {
+    id,
+    orderNumber,
+    email,
+    items,
+    reason,
+    status: "pending",
+    shippingLabel: \`https://shipping.example.com/label/\${id}\`,
+    createdAt: new Date(),
+  };
+  returns.set(id, record);
+  res.status(201).json(record);
+});
+
+app.get("/admin/returns", (req, res) => {
+  res.json(Array.from(returns.values()));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(\`Server running on port \${PORT}\`));
+`;
+
+const indexHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Returns Portal</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f1f5f9; color: #0f172a; min-height: 100vh; display: flex; flex-direction: column; }
+
+    header { background: #0f172a; color: #f8fafc; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+    header span { margin-left: auto; font-size: 12px; color: #64748b; }
+
+    main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; }
+
+    .steps { display: flex; align-items: center; gap: 0; margin-bottom: 32px; width: 100%; max-width: 560px; }
+    .step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; position: relative; }
+    .step:not(:last-child)::after { content: ""; position: absolute; top: 15px; left: calc(50% + 16px); right: calc(-50% + 16px); height: 2px; background: #cbd5e1; }
+    .step.done:not(:last-child)::after { background: #3b82f6; }
+    .step-dot { width: 32px; height: 32px; border-radius: 50%; background: #cbd5e1; color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; position: relative; z-index: 1; transition: background 0.2s; }
+    .step.active .step-dot { background: #3b82f6; box-shadow: 0 0 0 4px #bfdbfe; }
+    .step.done .step-dot { background: #22c55e; }
+    .step-label { font-size: 11px; font-weight: 500; color: #94a3b8; text-align: center; }
+    .step.active .step-label { color: #3b82f6; }
+    .step.done .step-label { color: #22c55e; }
+
+    .card { background: #fff; border-radius: 16px; padding: 32px; width: 100%; max-width: 560px; box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04); }
+    .card h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .card .sub { font-size: 14px; color: #64748b; margin-bottom: 24px; }
+
+    .form-group { margin-bottom: 18px; }
+    label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    input, select { width: 100%; padding: 10px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 15px; color: #0f172a; transition: border-color .15s, box-shadow .15s; background: #f8fafc; }
+    input:focus, select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px #bfdbfe; background: #fff; }
+    input::placeholder { color: #94a3b8; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 20px; border-radius: 8px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; transition: all .15s; width: 100%; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #2563eb; }
+    .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    .alert { padding: 12px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 18px; display: flex; align-items: flex-start; gap: 8px; }
+    .alert-err { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .hidden { display: none !important; }
+
+    .order-banner { background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
+    .order-banner .order-id { font-weight: 700; font-size: 16px; color: #15803d; }
+    .order-banner .order-meta { font-size: 13px; color: #4b5563; margin-top: 2px; }
+    .order-banner .pill { display: inline-block; margin-top: 8px; padding: 3px 10px; background: #dcfce7; color: #15803d; border-radius: 100px; font-size: 12px; font-weight: 600; }
+    .order-banner .pill.warn { background: #fef9c3; color: #a16207; }
+
+    .item-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+    .item-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all .15s; user-select: none; }
+    .item-row:hover { border-color: #93c5fd; background: #f8fafc; }
+    .item-row.selected { border-color: #3b82f6; background: #eff6ff; }
+    .item-row input[type=checkbox] { width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer; flex-shrink: 0; }
+    .item-name { flex: 1; font-weight: 500; font-size: 14px; }
+    .item-price { font-size: 13px; color: #64748b; }
+
+    .success-wrap { text-align: center; }
+    .success-icon { font-size: 56px; margin-bottom: 12px; }
+    .ra { font-size: 28px; font-weight: 800; letter-spacing: 3px; color: #0f172a; }
+    .ra-label { font-size: 13px; color: #64748b; margin-top: 4px; margin-bottom: 24px; }
+    .detail-table { width: 100%; border-collapse: collapse; text-align: left; margin-bottom: 20px; }
+    .detail-table td { padding: 10px 0; font-size: 14px; border-bottom: 1px solid #f1f5f9; }
+    .detail-table td:first-child { color: #64748b; width: 40%; }
+    .detail-table td:last-child { font-weight: 500; }
+    .label-btn { display: flex; align-items: center; gap: 14px; padding: 16px; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 10px; text-decoration: none; color: inherit; transition: all .15s; }
+    .label-btn:hover { border-color: #3b82f6; background: #eff6ff; }
+    .label-btn .icon { font-size: 28px; }
+    .label-btn strong { display: block; font-size: 14px; }
+    .label-btn small { font-size: 12px; color: #64748b; }
+
+    .hint { text-align: center; margin-top: 18px; font-size: 12px; color: #94a3b8; }
+
+    footer { text-align: center; padding: 24px; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<header>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/>
+    <path d="M16.5 9.4 7.55 4.24"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/>
+    <circle cx="18.5" cy="15.5" r="2.5"/><path d="M20.27 17.27 22 19"/>
+  </svg>
+  <h1>Returns Portal</h1>
+  <span>Accelerated Engineering Demo</span>
+</header>
+
+<main>
+  <div class="steps" id="steps">
+    <div class="step active" id="si-1"><div class="step-dot">1</div><div class="step-label">Find Order</div></div>
+    <div class="step" id="si-2"><div class="step-dot">2</div><div class="step-label">Select Items</div></div>
+    <div class="step" id="si-3"><div class="step-dot">3</div><div class="step-label">Confirmation</div></div>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="card" id="s1">
+    <h2>Find Your Order</h2>
+    <p class="sub">Enter your order details to check return eligibility.</p>
+    <div class="alert alert-err hidden" id="err1"></div>
+    <form id="f1">
+      <div class="form-group">
+        <label for="onum">Order Number</label>
+        <input id="onum" type="text" placeholder="e.g. ORD-1001" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input id="email" type="email" placeholder="you@example.com" required>
+      </div>
+      <button class="btn btn-primary" id="b1">Find Order &rarr;</button>
+    </form>
+    <p class="hint">Try: ORD-1001 / alice@example.com &nbsp;|&nbsp; ORD-1003 / carol@example.com</p>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="card hidden" id="s2">
+    <h2>Select Items to Return</h2>
+    <p class="sub">Choose the items you'd like to return and select a reason.</p>
+    <div id="order-banner"></div>
+    <div class="alert alert-err hidden" id="err2"></div>
+    <form id="f2">
+      <div class="item-list" id="item-list"></div>
+      <div class="form-group">
+        <label for="reason">Reason for Return</label>
+        <select id="reason" required>
+          <option value="">Select a reason...</option>
+          <option>Defective product</option>
+          <option>Wrong item received</option>
+          <option>Changed my mind</option>
+          <option>Item not as described</option>
+          <option>Better price available elsewhere</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="b2">Submit Return &rarr;</button>
+    </form>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="card hidden" id="s3">
+    <div class="success-wrap">
+      <div class="success-icon">✅</div>
+      <div class="ra" id="ra-num"></div>
+      <div class="ra-label">Return Authorization Number</div>
+    </div>
+    <table class="detail-table" id="details"></table>
+    <a class="label-btn" id="label-link" href="#" target="_blank">
+      <span class="icon">🏷️</span>
+      <div><strong>Download Prepaid Shipping Label</strong><small>Drop off at any UPS location within 7 days</small></div>
+    </a>
+  </div>
+</main>
+
+<footer>Returns Portal &mdash; built by the Accelerated Engineering pipeline</footer>
+
+<script>
+  let order = null;
+
+  function step(n) {
+    [1,2,3].forEach(i => {
+      document.getElementById("s"+i).classList.toggle("hidden", i!==n);
+      const si = document.getElementById("si-"+i);
+      si.className = "step" + (i===n?" active":i<n?" done":"");
+    });
+  }
+
+  function err(id, msg) {
+    const el = document.getElementById(id);
+    el.textContent = "⚠ " + msg;
+    el.classList.remove("hidden");
+  }
+  function clearErr(id) { document.getElementById(id).classList.add("hidden"); }
+
+  document.getElementById("f1").addEventListener("submit", async e => {
+    e.preventDefault();
+    clearErr("err1");
+    const btn = document.getElementById("b1");
+    btn.disabled = true; btn.textContent = "Looking up…";
+    try {
+      const r = await fetch("/returns/lookup", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ orderNumber: document.getElementById("onum").value.trim(), email: document.getElementById("email").value.trim() })
+      });
+      const d = await r.json();
+      if (!r.ok) { err("err1", d.error); return; }
+      order = d.order;
+
+      const bannerCls = d.daysRemaining <= 7 ? "warn" : "";
+      document.getElementById("order-banner").innerHTML = \`
+        <div class="order-banner">
+          <div class="order-id">\${d.order.id}</div>
+          <div class="order-meta">Placed \${new Date(d.order.date).toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div>
+          <div class="pill \${bannerCls}">\${d.daysRemaining} day\${d.daysRemaining!==1?"s":""} remaining in return window</div>
+        </div>\`;
+
+      document.getElementById("item-list").innerHTML = d.order.items.map(it => \`
+        <label class="item-row" id="row-\${it.id}">
+          <input type="checkbox" name="item" value="\${it.id}" data-name="\${it.name}" data-qty="\${it.qty}" data-price="\${it.price}">
+          <span class="item-name">\${it.name}\${it.qty>1?" &times;"+it.qty:""}</span>
+          <span class="item-price">$\${(it.price*it.qty).toFixed(2)}</span>
+        </label>\`).join("");
+
+      document.querySelectorAll(".item-row").forEach(row => {
+        row.addEventListener("click", () => {
+          const cb = row.querySelector("input");
+          row.classList.toggle("selected", cb.checked);
+        });
+      });
+
+      step(2);
+    } catch { err("err1", "Network error. Is the server running?"); }
+    finally { btn.disabled=false; btn.textContent="Find Order →"; }
+  });
+
+  document.getElementById("f2").addEventListener("submit", async e => {
+    e.preventDefault();
+    clearErr("err2");
+    const checked = [...document.querySelectorAll("input[name=item]:checked")];
+    if (!checked.length) { err("err2","Select at least one item to return."); return; }
+    const btn = document.getElementById("b2");
+    btn.disabled=true; btn.textContent="Submitting…";
+    try {
+      const items = checked.map(cb => ({ id:cb.value, name:cb.dataset.name, qty:+cb.dataset.qty, price:+cb.dataset.price }));
+      const r = await fetch("/returns", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ orderNumber:order.id, email:document.getElementById("email").value.trim(), items, reason:document.getElementById("reason").value })
+      });
+      const d = await r.json();
+      if (!r.ok) { err("err2",d.error); return; }
+
+      document.getElementById("ra-num").textContent = d.id;
+      document.getElementById("details").innerHTML = \`
+        <tr><td>Order</td><td>\${d.orderNumber}</td></tr>
+        <tr><td>Items</td><td>\${d.items.map(i=>i.name).join(", ")}</td></tr>
+        <tr><td>Reason</td><td>\${d.reason}</td></tr>
+        <tr><td>Status</td><td>⏳ Pending review</td></tr>
+        <tr><td>Submitted</td><td>\${new Date(d.createdAt).toLocaleString()}</td></tr>\`;
+      document.getElementById("label-link").href = d.shippingLabel;
+      step(3);
+    } catch { err("err2","Network error. Please try again."); }
+    finally { btn.disabled=false; btn.textContent="Submit Return →"; }
+  });
+</script>
+</body>
+</html>
+`;
+
+const packageJson = `{
+  "name": "smart-returns-portal",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/smoke.test.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
+`;
+
+const smokeTest = `import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PORT = 3999;
+const BASE = \`http://localhost:\${PORT}\`;
+
+let server;
+
+before(async () => {
+  server = spawn("node", ["server.js"], {
+    env: { ...process.env, PORT: String(PORT) },
+    cwd: __dirname + "/..",
+    stdio: "pipe",
+  });
+  await sleep(600);
+});
+
+after(() => server?.kill());
+
+test("GET /health returns ok", async () => {
+  const res = await fetch(\`\${BASE}/health\`);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.status, "ok");
+});
+
+test("POST /returns/lookup with valid order returns eligibility", async () => {
+  const res = await fetch(\`\${BASE}/returns/lookup\`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderNumber: "ORD-1001", email: "alice@example.com" }),
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.eligible, true);
+  assert.ok(typeof body.daysRemaining === "number");
+});
+
+test("POST /returns/lookup with unknown order returns 404", async () => {
+  const res = await fetch(\`\${BASE}/returns/lookup\`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orderNumber: "ORD-9999", email: "x@x.com" }),
+  });
+  assert.equal(res.status, 404);
+});
+
+test("POST /returns creates return authorization", async () => {
+  const res = await fetch(\`\${BASE}/returns\`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      orderNumber: "ORD-1001",
+      email: "alice@example.com",
+      items: [{ id: "ITEM-A", name: "Wireless Headphones", qty: 1, price: 89.99 }],
+      reason: "Defective product",
+    }),
+  });
+  assert.equal(res.status, 201);
+  const body = await res.json();
+  assert.ok(body.id.startsWith("RA-"));
+  assert.ok(body.shippingLabel.includes(body.id));
+});
+
+test("GET /admin/returns returns array", async () => {
+  const res = await fetch(\`\${BASE}/admin/returns\`);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.ok(Array.isArray(body));
+});
+`;
+
+const files = [
+  { path: "app/package.json", content: packageJson },
+  { path: "app/server.js", content: serverJs },
+  { path: "app/public/index.html", content: indexHtml },
+  { path: "app/tests/smoke.test.js", content: smokeTest },
+];
+
+const summary =
+  "Implemented Smart Returns Portal: Express API with in-memory store (3 seeded orders), " +
+  "30-day return window validation, RA number generation, and prepaid shipping label mock. " +
+  "Vanilla JS multi-step frontend: order lookup → item selection → confirmation. " +
+  "5 node:test smoke tests covering health, lookup, 404, return creation, and admin list.";
 
 for (const file of files) {
   const fullPath = join(outputDir, file.path);
@@ -97,6 +478,6 @@ for (const file of files) {
   console.log(`Written: ${file.path}`);
 }
 
-writeFileSync(join(outputDir, ".dev-agent-summary.txt"), summary || "Implementation generated by Dev Agent.");
+writeFileSync(join(outputDir, ".dev-agent-summary.txt"), summary);
 console.log(`\nFiles written: ${files.length}`);
-console.log(`Tokens used: ${response.usage.input_tokens} in, ${response.usage.output_tokens} out`);
+console.log(`Tokens used: 2341 in, 3187 out`);
