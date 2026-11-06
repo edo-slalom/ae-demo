@@ -8,16 +8,14 @@ body:
     attributes:
       label: Feature Name
       placeholder: e.g. Smart Returns Portal
-    validations:
-      required: true
+
   - type: textarea
     id: problem
     attributes:
       label: Problem Statement
       description: What business problem are we solving? Who is affected?
       placeholder: Customers currently have to call support to initiate a return...
-    validations:
-      required: true
+
   - type: textarea
     id: requirements
     attributes:
@@ -30,8 +28,7 @@ body:
         - System generates a Return Authorization (RA) number
         - System shows a prepaid shipping label (mocked URL)
         - Admin dashboard shows pending returns list
-    validations:
-      required: true
+
   - type: dropdown
     id: priority
     attributes:
@@ -40,8 +37,7 @@ body:
         - High
         - Medium
         - Low
-    validations:
-      required: true
+
   - type: textarea
     id: out-of-scope
     attributes:
