@@ -65,6 +65,9 @@ jobs:
             --head "$BRANCH" \
             --label "spec")
 
+          PR_NUMBER="${PR_URL##*/}"
+          gh pr merge "${PR_NUMBER}" --auto --merge
+
           {
             echo "## 🤖 Spec Agent Complete"
             echo ""
@@ -72,7 +75,7 @@ jobs:
             echo ""
             echo "**[→ Review Spec PR](${PR_URL})**"
             echo ""
-            echo "Once you approve and merge the spec, development begins automatically."
+            echo "Once you **approve** the spec, it will merge automatically and development begins."
             echo ""
             echo "*Gate 1 of 3 — Spec Approval*"
           } | gh issue comment "${ISSUE_NUMBER}" --body-file -
