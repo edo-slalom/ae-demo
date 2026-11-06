@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Returns Portal</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f1f5f9; color: #0f172a; min-height: 100vh; display: flex; flex-direction: column; }
+
+    header { background: #0f172a; color: #f8fafc; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+    header svg { flex-shrink: 0; }
+    header h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+    header span { margin-left: auto; font-size: 12px; color: #64748b; }
+
+    main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; }
+
+    .steps { display: flex; align-items: center; gap: 0; margin-bottom: 32px; width: 100%; max-width: 560px; }
+    .step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; position: relative; }
+    .step:not(:last-child)::after { content: ""; position: absolute; top: 15px; left: calc(50% + 16px); right: calc(-50% + 16px); height: 2px; background: #cbd5e1; }
+    .step.done:not(:last-child)::after { background: #3b82f6; }
+    .step-dot { width: 32px; height: 32px; border-radius: 50%; background: #cbd5e1; color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; position: relative; z-index: 1; transition: background 0.2s; }
+    .step.active .step-dot { background: #3b82f6; box-shadow: 0 0 0 4px #bfdbfe; }
+    .step.done .step-dot { background: #22c55e; }
+    .step-label { font-size: 11px; font-weight: 500; color: #94a3b8; text-align: center; }
+    .step.active .step-label { color: #3b82f6; }
+    .step.done .step-label { color: #22c55e; }
+
+    .card { background: #fff; border-radius: 16px; padding: 32px; width: 100%; max-width: 560px; box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.04); }
+    .card h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .card .sub { font-size: 14px; color: #64748b; margin-bottom: 24px; }
+
+    .form-group { margin-bottom: 18px; }
+    label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+    input, select { width: 100%; padding: 10px 14px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 15px; color: #0f172a; transition: border-color .15s, box-shadow .15s; background: #f8fafc; }
+    input:focus, select:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px #bfdbfe; background: #fff; }
+    input::placeholder { color: #94a3b8; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 20px; border-radius: 8px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; transition: all .15s; width: 100%; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #2563eb; }
+    .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    .alert { padding: 12px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 18px; display: flex; align-items: flex-start; gap: 8px; }
+    .alert-err { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .hidden { display: none !important; }
+
+    .order-banner { background: #f0fdf4; border: 1.5px solid #bbf7d0; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
+    .order-banner .order-id { font-weight: 700; font-size: 16px; color: #15803d; }
+    .order-banner .order-meta { font-size: 13px; color: #4b5563; margin-top: 2px; }
+    .order-banner .pill { display: inline-block; margin-top: 8px; padding: 3px 10px; background: #dcfce7; color: #15803d; border-radius: 100px; font-size: 12px; font-weight: 600; }
+    .order-banner .pill.warn { background: #fef9c3; color: #a16207; }
+
+    .item-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+    .item-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1.5px solid #e2e8f0; border-radius: 10px; cursor: pointer; transition: all .15s; user-select: none; }
+    .item-row:hover { border-color: #93c5fd; background: #f8fafc; }
+    .item-row.selected { border-color: #3b82f6; background: #eff6ff; }
+    .item-row input[type=checkbox] { width: 18px; height: 18px; accent-color: #3b82f6; cursor: pointer; flex-shrink: 0; }
+    .item-name { flex: 1; font-weight: 500; font-size: 14px; }
+    .item-price { font-size: 13px; color: #64748b; }
+
+    .success-wrap { text-align: center; }
+    .success-icon { font-size: 56px; margin-bottom: 12px; }
+    .ra { font-size: 28px; font-weight: 800; letter-spacing: 3px; color: #0f172a; }
+    .ra-label { font-size: 13px; color: #64748b; margin-top: 4px; margin-bottom: 24px; }
+    .detail-table { width: 100%; border-collapse: collapse; text-align: left; margin-bottom: 20px; }
+    .detail-table td { padding: 10px 0; font-size: 14px; border-bottom: 1px solid #f1f5f9; }
+    .detail-table td:first-child { color: #64748b; width: 40%; }
+    .detail-table td:last-child { font-weight: 500; }
+    .label-btn { display: flex; align-items: center; gap: 14px; padding: 16px; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 10px; text-decoration: none; color: inherit; transition: all .15s; }
+    .label-btn:hover { border-color: #3b82f6; background: #eff6ff; }
+    .label-btn .icon { font-size: 28px; }
+    .label-btn strong { display: block; font-size: 14px; }
+    .label-btn small { font-size: 12px; color: #64748b; }
+
+    .hint { text-align: center; margin-top: 18px; font-size: 12px; color: #94a3b8; }
+
+    footer { text-align: center; padding: 24px; font-size: 12px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+<header>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/>
+    <path d="M16.5 9.4 7.55 4.24"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/>
+    <circle cx="18.5" cy="15.5" r="2.5"/><path d="M20.27 17.27 22 19"/>
+  </svg>
+  <h1>Returns Portal</h1>
+  <span>Accelerated Engineering Demo</span>
+</header>
+
+<main>
+  <div class="steps" id="steps">
+    <div class="step active" id="si-1"><div class="step-dot">1</div><div class="step-label">Find Order</div></div>
+    <div class="step" id="si-2"><div class="step-dot">2</div><div class="step-label">Select Items</div></div>
+    <div class="step" id="si-3"><div class="step-dot">3</div><div class="step-label">Confirmation</div></div>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="card" id="s1">
+    <h2>Find Your Order</h2>
+    <p class="sub">Enter your order details to check return eligibility.</p>
+    <div class="alert alert-err hidden" id="err1"></div>
+    <form id="f1">
+      <div class="form-group">
+        <label for="onum">Order Number</label>
+        <input id="onum" type="text" placeholder="e.g. ORD-1001" required autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input id="email" type="email" placeholder="you@example.com" required>
+      </div>
+      <button class="btn btn-primary" id="b1">Find Order &rarr;</button>
+    </form>
+    <p class="hint">Try: ORD-1001 / alice@example.com &nbsp;|&nbsp; ORD-1003 / carol@example.com</p>
+  </div>
+
+  <!-- Step 2 -->
+  <div class="card hidden" id="s2">
+    <h2>Select Items to Return</h2>
+    <p class="sub">Choose the items you'd like to return and select a reason.</p>
+    <div id="order-banner"></div>
+    <div class="alert alert-err hidden" id="err2"></div>
+    <form id="f2">
+      <div class="item-list" id="item-list"></div>
+      <div class="form-group">
+        <label for="reason">Reason for Return</label>
+        <select id="reason" required>
+          <option value="">Select a reason...</option>
+          <option>Defective product</option>
+          <option>Wrong item received</option>
+          <option>Changed my mind</option>
+          <option>Item not as described</option>
+          <option>Better price available elsewhere</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="b2">Submit Return &rarr;</button>
+    </form>
+  </div>
+
+  <!-- Step 3 -->
+  <div class="card hidden" id="s3">
+    <div class="success-wrap">
+      <div class="success-icon">✅</div>
+      <div class="ra" id="ra-num"></div>
+      <div class="ra-label">Return Authorization Number</div>
+    </div>
+    <table class="detail-table" id="details"></table>
+    <a class="label-btn" id="label-link" href="#" target="_blank">
+      <span class="icon">🏷️</span>
+      <div><strong>Download Prepaid Shipping Label</strong><small>Drop off at any UPS location within 7 days</small></div>
+    </a>
+  </div>
+</main>
+
+<footer>Returns Portal &mdash; built by the Accelerated Engineering pipeline</footer>
+
+<script>
+  let order = null;
+
+  function step(n) {
+    [1,2,3].forEach(i => {
+      document.getElementById("s"+i).classList.toggle("hidden", i!==n);
+      const si = document.getElementById("si-"+i);
+      si.className = "step" + (i===n?" active":i<n?" done":"");
+    });
+  }
+
+  function err(id, msg) {
+    const el = document.getElementById(id);
+    el.textContent = "⚠ " + msg;
+    el.classList.remove("hidden");
+  }
+  function clearErr(id) { document.getElementById(id).classList.add("hidden"); }
+
+  document.getElementById("f1").addEventListener("submit", async e => {
+    e.preventDefault();
+    clearErr("err1");
+    const btn = document.getElementById("b1");
+    btn.disabled = true; btn.textContent = "Looking up…";
+    try {
+      const r = await fetch("/returns/lookup", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ orderNumber: document.getElementById("onum").value.trim(), email: document.getElementById("email").value.trim() })
+      });
+      const d = await r.json();
+      if (!r.ok) { err("err1", d.error); return; }
+      order = d.order;
+
+      const bannerCls = d.daysRemaining <= 7 ? "warn" : "";
+      document.getElementById("order-banner").innerHTML = `
+        <div class="order-banner">
+          <div class="order-id">${d.order.id}</div>
+          <div class="order-meta">Placed ${new Date(d.order.date).toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div>
+          <div class="pill ${bannerCls}">${d.daysRemaining} day${d.daysRemaining!==1?"s":""} remaining in return window</div>
+        </div>`;
+
+      document.getElementById("item-list").innerHTML = d.order.items.map(it => `
+        <label class="item-row" id="row-${it.id}">
+          <input type="checkbox" name="item" value="${it.id}" data-name="${it.name}" data-qty="${it.qty}" data-price="${it.price}">
+          <span class="item-name">${it.name}${it.qty>1?" &times;"+it.qty:""}</span>
+          <span class="item-price">$${(it.price*it.qty).toFixed(2)}</span>
+        </label>`).join("");
+
+      document.querySelectorAll(".item-row").forEach(row => {
+        row.addEventListener("click", () => {
+          const cb = row.querySelector("input");
+          row.classList.toggle("selected", cb.checked);
+        });
+      });
+
+      step(2);
+    } catch { err("err1", "Network error. Is the server running?"); }
+    finally { btn.disabled=false; btn.textContent="Find Order →"; }
+  });
+
+  document.getElementById("f2").addEventListener("submit", async e => {
+    e.preventDefault();
+    clearErr("err2");
+    const checked = [...document.querySelectorAll("input[name=item]:checked")];
+    if (!checked.length) { err("err2","Select at least one item to return."); return; }
+    const btn = document.getElementById("b2");
+    btn.disabled=true; btn.textContent="Submitting…";
+    try {
+      const items = checked.map(cb => ({ id:cb.value, name:cb.dataset.name, qty:+cb.dataset.qty, price:+cb.dataset.price }));
+      const r = await fetch("/returns", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ orderNumber:order.id, email:document.getElementById("email").value.trim(), items, reason:document.getElementById("reason").value })
+      });
+      const d = await r.json();
+      if (!r.ok) { err("err2",d.error); return; }
+
+      document.getElementById("ra-num").textContent = d.id;
+      document.getElementById("details").innerHTML = `
+        <tr><td>Order</td><td>${d.orderNumber}</td></tr>
+        <tr><td>Items</td><td>${d.items.map(i=>i.name).join(", ")}</td></tr>
+        <tr><td>Reason</td><td>${d.reason}</td></tr>
+        <tr><td>Status</td><td>⏳ Pending review</td></tr>
+        <tr><td>Submitted</td><td>${new Date(d.createdAt).toLocaleString()}</td></tr>`;
+      document.getElementById("label-link").href = d.shippingLabel;
+      step(3);
+    } catch { err("err2","Network error. Please try again."); }
+    finally { btn.disabled=false; btn.textContent="Submit Return →"; }
+  });
+</script>
+</body>
+</html>
