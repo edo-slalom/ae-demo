@@ -1,0 +1,80 @@
+name: "🤖 Gate 1 — Spec Agent"
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  spec:
+    name: Generate Technical Specification
+    if: github.event.label.name == 'needs-spec'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install script dependencies
+        run: cd scripts && npm install
+
+      - name: Run Spec Agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          OUTPUT_PATH: SPEC.md
+        run: node scripts/spec-agent.mjs
+
+      - name: Commit spec to new branch and open PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          BRANCH="spec/issue-${ISSUE_NUMBER}"
+
+          git config user.name "ae-demo-bot[bot]"
+          git config user.email "ae-demo-bot@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add SPEC.md
+          git commit -m "spec: auto-generate technical specification for #${ISSUE_NUMBER}"
+          git push origin "$BRANCH"
+
+          PR_URL=$(gh pr create \
+            --title "Spec: ${ISSUE_TITLE}" \
+            --body "## 🤖 Spec Agent — Gate 1
+
+This specification was auto-generated from issue #${ISSUE_NUMBER} by the Spec Agent.
+
+**Review the spec carefully before approving.** Once merged, the Dev Agent will automatically begin implementation.
+
+### How to review
+- [ ] Does the spec accurately capture the requirements from the issue?
+- [ ] Are the API contracts sensible?
+- [ ] Are the acceptance criteria testable?
+- [ ] Is out-of-scope clearly defined?
+
+Closes #${ISSUE_NUMBER}" \
+            --base main \
+            --head "$BRANCH" \
+            --label "spec")
+
+          gh issue comment "${ISSUE_NUMBER}" --body "## 🤖 Spec Agent Complete
+
+I've analyzed your feature request and generated a technical specification.
+
+**[→ Review Spec PR](${PR_URL})**
+
+Once you approve and merge the spec, development begins automatically.
+
+---
+*Gate 1 of 3 — Spec Approval*"

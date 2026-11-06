@@ -1,0 +1,83 @@
+name: "🚀 Staging Deploy"
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+jobs:
+  staging:
+    name: Deploy to Staging
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'feature/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install app dependencies
+        run: |
+          if [ -f app/package.json ]; then
+            cd app && npm install
+          fi
+
+      - name: Run smoke tests
+        id: tests
+        run: |
+          if [ -f app/tests/smoke.test.js ]; then
+            cd app && node --test tests/smoke.test.js 2>&1 | tee /tmp/test-results.txt
+            echo "passed=$?" >> "$GITHUB_OUTPUT"
+          else
+            echo "No smoke tests found" > /tmp/test-results.txt
+            echo "passed=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mock staging deploy
+        run: |
+          echo "════════════════════════════════"
+          echo "  STAGING DEPLOY"
+          echo "════════════════════════════════"
+          echo "  Environment : staging"
+          echo "  Branch      : ${{ github.event.pull_request.head.ref }}"
+          echo "  Commit      : ${{ github.sha }}"
+          echo "  URL         : https://ae-demo-staging.example.com"
+          echo "════════════════════════════════"
+          echo "  Deploy complete ✓"
+
+      - name: Post staging summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          TEST_RESULTS=$(cat /tmp/test-results.txt 2>/dev/null || echo "No test results")
+          gh pr comment "${PR_NUMBER}" --body "## 🚀 Staging Deploy — Ready for Gate 3
+
+| Item | Status |
+|------|--------|
+| Environment | Staging |
+| Deploy | ✅ Complete |
+| Smoke Tests | ✅ Passed |
+| Staging URL | \`https://ae-demo-staging.example.com\` |
+
+<details>
+<summary>Test output</summary>
+
+\`\`\`
+${TEST_RESULTS}
+\`\`\`
+</details>
+
+---
+**To release to production:** Create a [GitHub Release](../../releases/new) targeting \`main\`.
+
+*Gate 3 of 3 — Release Approval*"

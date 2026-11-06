@@ -1,0 +1,48 @@
+name: "🎯 Production Release"
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mock production deploy
+        run: |
+          echo "════════════════════════════════"
+          echo "  PRODUCTION DEPLOY"
+          echo "════════════════════════════════"
+          echo "  Release     : ${{ github.event.release.tag_name }}"
+          echo "  Environment : production"
+          echo "  URL         : https://ae-demo.example.com"
+          echo "════════════════════════════════"
+          sleep 3
+          echo "  Health check ✓"
+          echo "  Deploy complete ✓"
+
+      - name: Update release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING_BODY=$(gh release view "${{ github.event.release.tag_name }}" --json body -q .body)
+          gh release edit "${{ github.event.release.tag_name }}" \
+            --notes "${EXISTING_BODY}
+
+---
+## 🎯 Deployment
+
+| Item | Detail |
+|------|--------|
+| Production URL | \`https://ae-demo.example.com\` |
+| Deployed at | $(date -u '+%Y-%m-%d %H:%M UTC') |
+| Status | ✅ Live |
+
+*Deployed by Release Agent*"

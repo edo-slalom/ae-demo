@@ -1,0 +1,66 @@
+name: "🤖 Review Agent"
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches: [main]
+
+jobs:
+  review:
+    name: Automated Code Review
+    if: startsWith(github.head_ref, 'feature/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install script dependencies
+        run: cd scripts && npm install
+
+      - name: Get PR diff
+        id: diff
+        run: |
+          git fetch origin main
+          DIFF=$(git diff origin/main...HEAD -- app/ | head -c 30000)
+          {
+            echo "diff<<DIFF_EOF"
+            echo "$DIFF"
+            echo "DIFF_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run Review Agent
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PR_DIFF: ${{ steps.diff.outputs.diff }}
+          SPEC_PATH: SPEC.md
+        run: |
+          node scripts/review-agent.mjs > /tmp/review.md
+          {
+            echo "review<<REVIEW_EOF"
+            cat /tmp/review.md
+            echo "REVIEW_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post review as PR comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          BODY=$(cat /tmp/review.md)
+          FOOTER="
+
+---
+*Automated review by Review Agent — Gate 2 of 3*"
+          gh pr comment "${PR_NUMBER}" --body "${BODY}${FOOTER}"

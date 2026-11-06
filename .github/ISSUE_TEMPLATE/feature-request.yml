@@ -1,0 +1,50 @@
+name: Feature Request
+description: Submit a feature for the accelerated engineering pipeline
+title: "[Feature]: "
+labels: ["feature-request"]
+body:
+  - type: input
+    id: feature-name
+    attributes:
+      label: Feature Name
+      placeholder: e.g. Smart Returns Portal
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What business problem are we solving? Who is affected?
+      placeholder: Customers currently have to call support to initiate a return...
+    validations:
+      required: true
+  - type: textarea
+    id: requirements
+    attributes:
+      label: Key Requirements
+      description: Bullet list of must-have requirements
+      placeholder: |
+        - Customer enters order number and email to look up order
+        - System validates order is within 30-day return window
+        - Customer selects items and reason for return
+        - System generates a Return Authorization (RA) number
+        - System shows a prepaid shipping label (mocked URL)
+        - Admin dashboard shows pending returns list
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of Scope
+      description: What are we explicitly NOT building in this iteration?
+      placeholder: Actual carrier integration, refund processing, email notifications
