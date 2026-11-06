@@ -32,7 +32,7 @@ jobs:
 
       - name: Run Dev Agent
         env:
-          SPEC_PATH: SPEC.md
+          SPEC_PATH: specs/issue-${{ steps.issue.outputs.number }}.md
           OUTPUT_DIR: .
         run: node scripts/dev-agent.mjs
 

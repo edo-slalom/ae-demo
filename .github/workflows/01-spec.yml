@@ -22,8 +22,10 @@ jobs:
         env:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-          OUTPUT_PATH: SPEC.md
-        run: node scripts/spec-agent.mjs
+          OUTPUT_PATH: specs/issue-${{ github.event.issue.number }}.md
+        run: |
+          mkdir -p specs
+          node scripts/spec-agent.mjs
 
       - name: Commit spec to new branch and open PR
         env:
@@ -36,7 +38,7 @@ jobs:
           git config user.name "ae-demo-bot[bot]"
           git config user.email "ae-demo-bot@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add SPEC.md
+          git add specs/
           git commit -m "spec: auto-generate technical specification for #${ISSUE_NUMBER}"
           git push origin "$BRANCH"
 
