@@ -23,14 +23,6 @@ jobs:
         with:
           ref: main
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install script dependencies
-        run: cd scripts && npm install
-
       - name: Extract issue number from branch name
         id: issue
         run: |

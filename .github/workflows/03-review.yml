@@ -20,14 +20,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install script dependencies
-        run: cd scripts && npm install
-
       - name: Get PR diff
         run: |
           git fetch origin main
