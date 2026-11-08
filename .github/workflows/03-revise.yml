@@ -1,0 +1,77 @@
+name: "🔧 Fix Agent — Review Loop"
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  fix:
+    name: Address Review Feedback
+    if: >
+      github.event.review.state == 'changes_requested' &&
+      startsWith(github.event.pull_request.head.ref, 'feature/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Post "Fix Agent starting" comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "## 🔧 Fix Agent — Addressing Feedback"
+            echo ""
+            echo "Review feedback received. Analysing comments and applying fixes..."
+          } | gh pr comment "${PR_NUMBER}" --repo ${{ github.repository }} --body-file -
+
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Run Fix Agent
+        env:
+          REVIEW_COMMENT: ${{ github.event.review.body }}
+          OUTPUT_DIR: .
+        run: node scripts/fix-agent.mjs
+
+      - name: Commit and push fixes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SUMMARY=$(cat .fix-agent-summary.txt 2>/dev/null || echo "Addressed review feedback")
+
+          git config user.name "ae-demo-bot[bot]"
+          git config user.email "ae-demo-bot@users.noreply.github.com"
+          git add app/
+
+          printf 'fix: address review feedback\n\n%s' "${SUMMARY}" > /tmp/fix-commit-msg.txt
+          git commit -F /tmp/fix-commit-msg.txt
+          git push origin "${{ github.event.pull_request.head.ref }}"
+
+      - name: Post "Fixes applied, please re-review" comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          SUMMARY=$(cat .fix-agent-summary.txt 2>/dev/null || echo "Review feedback addressed")
+          {
+            echo "## 🔧 Fix Agent — Changes Applied"
+            echo ""
+            echo "### Fixed"
+            echo ""
+            echo "${SUMMARY}" | sed 's/^/- ✅ /'
+            echo ""
+            echo "### Not addressed (out of scope for this iteration)"
+            echo "- 🔵 CORS wildcard — noted for production hardening"
+            echo "- 🔵 Inline CSS/JS extraction — noted for future refactor"
+            echo ""
+            echo "Please re-review the updated code."
+            echo ""
+            echo "---"
+            echo "*Automated fix by Fix Agent*"
+          } | gh pr comment "${PR_NUMBER}" --repo ${{ github.repository }} --body-file -

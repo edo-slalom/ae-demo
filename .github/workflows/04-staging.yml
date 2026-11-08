@@ -1,4 +1,4 @@
-name: "🚀 Staging Deploy"
+name: "🚀 Staging Deploy + Issue Close"
 
 on:
   pull_request:
@@ -15,8 +15,15 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      issues: write
 
     steps:
+      - name: Extract issue number
+        id: issue
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref }}"
+          echo "number=${BRANCH#feature/issue-}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -46,7 +53,7 @@ jobs:
           echo "════════════════════════════════"
           echo "  Deploy complete ✓"
 
-      - name: Post staging summary
+      - name: Post staging summary on PR
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -76,3 +83,28 @@ jobs:
             echo "*Gate 3 of 3 — Release Approval*"
           } > /tmp/staging-comment.md
           gh pr comment "${PR_NUMBER}" --body-file /tmp/staging-comment.md
+
+      - name: Post summary and close issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          COMMITS=$(gh pr view "${PR_NUMBER}" --repo ${{ github.repository }} --json commits --jq '.commits | length')
+          {
+            echo "## ✅ Implementation Merged"
+            echo ""
+            echo "**[${PR_TITLE}](${PR_URL})** was reviewed and merged to \`main\`."
+            echo ""
+            echo "### Pipeline summary"
+            echo "- ✅ **Gate 1 — Spec:** Reviewed and approved by a human"
+            echo "- ✅ **Gate 2 — Implementation:** Code reviewed, feedback addressed, approved by a human"
+            echo "- ✅ **Staging:** Smoke tests passed, deployed to staging"
+            echo ""
+            echo "### Next step"
+            echo "Create a [GitHub Release](../../releases/new) targeting \`main\` to deploy to production (Gate 3)."
+          } | gh issue comment "${ISSUE_NUMBER}" --repo ${{ github.repository }} --body-file -
+
+          gh issue close "${ISSUE_NUMBER}" --repo ${{ github.repository }}
